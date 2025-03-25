@@ -5,34 +5,53 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
+	"strings"
 )
 
 type QA struct {
-	question      string
-	goodAnswer    string
-	questionIndex int
+	question   string
+	goodAnswer string
 }
 
-func askQuestion(qa QA) (bool, error) {
-	fmt.Printf("Question %d:	%s ?", qa.questionIndex, qa.question)
+func askQuestion(qa QA) bool {
+
 	var proposedAnswer string
 	_, err := fmt.Scan(&proposedAnswer)
 	if err != nil {
-		log.Println(err.Error())
-		return false, err
+		log.Println("invalid answer")
+		return false
 	}
 	if proposedAnswer == qa.goodAnswer {
-
-		return true, nil
+		return true
 	}
 
-	return false, nil
+	return false
 }
 
+func parseCSV(data []byte) []QA {
 
+	// attempt parsing the CSV file and fill a slice of QA
+	r := csv.NewReader(bytes.NewReader(data))
+
+	records, err := r.ReadAll()
+	if err != nil {
+		log.Fatalln(err.Error() + " --> malformed csv, abort.")
+	}
+
+	var qa = make([]QA, len(records))
+
+	// sanitize unecessary spaces in csv fields
+	for i := range qa {
+		qa[i].question = strings.TrimSpace(records[i][0])
+		qa[i].goodAnswer = strings.TrimSpace(records[i][1])
+
+	}
+
+	return qa
+
+}
 func main() {
 
 	var fileName string
@@ -42,53 +61,25 @@ func main() {
 	flag.StringVar(&fileName, "csv", "problems.csv", "a csv file in the format of 'question, answer'")
 	flag.IntVar(&timeLimit, "limit", 30, "time limit in seconds")
 	flag.Parse()
-	
 
-	// read csv file
+	// open csv file
 	data, err := os.ReadFile(fileName)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	r := csv.NewReader(bytes.NewReader(data))
-	questionCount := 0
+	// parse csv file and sanitize records
+	qa := parseCSV(data)
+
+	// run the quizz
 	goodAnswerCount := 0
+	for i, q := range qa {
+		fmt.Printf("Question %d:	%s ?", i, q.question)
+		ok := askQuestion(q)
 
-	for {
-		record, err := r.Read()
-
-		// end of file check
-		if err == io.EOF {
-			break
-		}
-
-		//invalid CSV record
-		if err != nil {
-			log.Print(err)
-		}
-		// increment question counter
-		questionCount++
-		// fill question/answer struct
-		qa := QA{record[0], record[1], questionCount}
-
-		// ask question and validate answer
-
-		answer, err := askQuestion(qa); 
-		
-		if err != nil {
-			log.Println("invalid answer, doesn't count")
-			continue
-		}
-		if answer {
+		if ok {
 			goodAnswerCount++
-			fmt.Println("Good answer")
-			continue
 		}
-		
-		//neither error nor good answer
-		fmt.Println("Bad answer")
-
 	}
-	fmt.Printf("Good Answers/Total %d/%d \n", goodAnswerCount, questionCount)
+	fmt.Printf("Correct Answers/Total %d/%d \n", goodAnswerCount, len(qa))
 }
-

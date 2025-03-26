@@ -61,6 +61,22 @@ func shuffleQuestions(qa *[]QA) {
 	})
 
 }
+
+
+func runQuiz(qa []QA, goodAnswerCount *int, done chan<- bool) {
+
+	for i, q := range qa {
+
+		fmt.Printf("Question %d:	%s ?", i+1, q.question)
+		ok := askQuestion(q)
+
+		if ok {
+			*goodAnswerCount++
+		}
+	}
+	done <- true
+}
+
 func main() {
 
 	var fileName *string
@@ -82,36 +98,28 @@ func main() {
 	// parse csv file and sanitize records
 	qa := parseCSV(data)
 
+	// shuffle if required 
 	if *shuffle {
 		shuffleQuestions(&qa)
 	}
 
+	// setup a context with timeout set to -limit <limit> 
+	// preprare a done channel
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeLimit)*time.Second)
 	defer cancel()
 	goodAnswerCount := 0
 	done := make(chan bool)
 
+	// passing goodAnswerCount is not race immune but there is only one routine
 	go runQuiz(qa, &goodAnswerCount, done)
 
+	// either there is a timeout or users finished the quiz
 	select {
 	case <-ctx.Done():
 		fmt.Println("time out !")
-		fmt.Printf("Correct Answers/Total %d/%d \n", goodAnswerCount, len(qa))
+		
 	case <-done:
-		fmt.Printf("Correct Answers/Total %d/%d \n", goodAnswerCount, len(qa))
+		
 	}
-}
-
-func runQuiz(qa []QA, goodAnswerCount *int, done chan<- bool) {
-
-	for i, q := range qa {
-
-		fmt.Printf("Question %d:	%s ?", i+1, q.question)
-		ok := askQuestion(q)
-
-		if ok {
-			*goodAnswerCount++
-		}
-	}
-	done <- true
+	fmt.Printf("Correct Answers/Total : %d/%d \n", goodAnswerCount, len(qa))
 }

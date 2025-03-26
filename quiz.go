@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"time"
 )
 
 type QA struct {
@@ -53,12 +55,11 @@ func parseCSV(data []byte) []QA {
 }
 
 func shuffleQuestions(qa *[]QA) {
-	
+
 	rand.Shuffle(len(*qa), func(i, j int) {
 		(*qa)[i], (*qa)[j] = (*qa)[j], (*qa)[i]
 	})
-	
-	
+
 }
 func main() {
 
@@ -67,9 +68,9 @@ func main() {
 	var shuffle *bool
 
 	// read flags
-	fileName=flag.String("csv", "problems.csv", "a csv file in the format of 'question, answer'")
-	timeLimit=flag.Int("limit", 30, "time limit in seconds")
-	shuffle = flag.Bool("shuffle", false,"shuffle questions from questions set")
+	fileName = flag.String("csv", "problems.csv", "a csv file in the format of 'question, answer'")
+	timeLimit = flag.Int("limit", 30, "time limit in seconds")
+	shuffle = flag.Bool("shuffle", false, "shuffle questions from questions set")
 	flag.Parse()
 
 	// open csv file
@@ -85,17 +86,32 @@ func main() {
 		shuffleQuestions(&qa)
 	}
 
-	// run the quizz
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeLimit)*time.Second)
+	defer cancel()
 	goodAnswerCount := 0
+	done := make(chan bool)
+
+	go runQuiz(qa, &goodAnswerCount, done)
+
+	select {
+	case <-ctx.Done():
+		fmt.Println("time out !")
+		fmt.Printf("Correct Answers/Total %d/%d \n", goodAnswerCount, len(qa))
+	case <-done:
+		fmt.Printf("Correct Answers/Total %d/%d \n", goodAnswerCount, len(qa))
+	}
+}
+
+func runQuiz(qa []QA, goodAnswerCount *int, done chan<- bool) {
+
 	for i, q := range qa {
-		fmt.Printf("Question %d:	%s ?", i, q.question)
+
+		fmt.Printf("Question %d:	%s ?", i+1, q.question)
 		ok := askQuestion(q)
 
 		if ok {
-			goodAnswerCount++
+			*goodAnswerCount++
 		}
 	}
-	fmt.Printf("Correct Answers/Total %d/%d \n", goodAnswerCount, len(qa))
-
-	_ = timeLimit
+	done <- true
 }
